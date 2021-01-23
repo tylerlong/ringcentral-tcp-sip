@@ -1,5 +1,7 @@
 import RingCentral from '@rc-ex/core';
 import {hostname} from 'os';
+import {Socket} from 'net';
+import waitFor from 'wait-for-async';
 
 const rc = new RingCentral({
   clientId: process.env.RINGCENTRAL_CLIENT_ID,
@@ -13,7 +15,6 @@ const rc = new RingCentral({
     extension: process.env.RINGCENTRAL_EXTENSION,
     password: process.env.RINGCENTRAL_PASSWORD!,
   });
-  console.log(rc.token?.access_token);
 
   const sipProvision = await rc
     .restapi()
@@ -26,7 +27,24 @@ const rc = new RingCentral({
       },
     });
 
-  console.log(sipProvision);
+  const sipInfo = sipProvision.sipInfo![0];
+  console.log(sipInfo);
+
+  const [host, port] = sipInfo.outboundProxy!.split(':');
+
+  const client = new Socket();
+  client.connect(parseInt(port), host, () => {
+    console.log('Connected');
+  });
+  client.on('data', data => {
+    console.log('Received', data);
+  });
+  client.on('close', () => {
+    console.log('Closed');
+  });
+
+  await waitFor({interval: 10000});
+  client.end();
 
   await rc.revoke();
 })();

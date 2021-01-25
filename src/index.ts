@@ -1,7 +1,6 @@
 import RingCentral from '@rc-ex/core';
 import {hostname} from 'os';
 import {Socket} from 'net';
-import waitFor from 'wait-for-async';
 import {v4 as uuid} from 'uuid';
 import {SIPInfoResponse} from '@rc-ex/core/lib/definitions';
 
@@ -10,6 +9,7 @@ import {generateAuthorization, waitForMessage} from './utils';
 
 const fakeDomain = uuid() + '.invalid';
 const fakeEmail = uuid() + '@' + fakeDomain;
+const userAgent = 'ringcentral-tcp-sip-demo';
 
 const rc = new RingCentral({
   clientId: process.env.RINGCENTRAL_CLIENT_ID,
@@ -22,7 +22,7 @@ const register = async (client: Socket, sipInfo: SIPInfoResponse) => {
     subject: `REGISTER sip:${sipInfo.domain} SIP/2.0`,
     headers: {
       'Call-ID': uuid(),
-      'User-Agent': 'ringcentral-tcp-sip-demo',
+      'User-Agent': userAgent,
       Contact: `<sip:${fakeEmail};transport=tcp>;expires=600`,
       Via: `SIP/2.0/TCP ${fakeDomain};branch=${'z9hG4bK' + uuid()}`,
       From: `<sip:${sipInfo.username}@${sipInfo.domain}>;tag=${uuid()}`,
@@ -97,7 +97,36 @@ const register = async (client: Socket, sipInfo: SIPInfoResponse) => {
     console.log('Closed');
   });
 
-  await waitFor({interval: 3000000});
+  // await waitFor({interval: 3000000});
+  let count = 0;
+  while (count < 100) {
+    // test 100 incoming calls
+    count += 1;
+    const inviteMessage = await waitForMessage(
+      client,
+      message => message.indexOf('INVITE sip:') !== -1
+    );
+    const inviteSipMessage = SipMessage.fromString(inviteMessage);
+
+    const _180SipMessage = new SipMessage({
+      subject: 'SIP/2.0 180 Ringing',
+      headers: {
+        Contact:
+          '<sip:0226d6bc-703c-48bc-93e8-16007e5067b9.invalid;transport=ws>',
+        'User-Agent': userAgent,
+        'Content-Length': '0',
+        Via: inviteSipMessage.headers.Via,
+        From: inviteSipMessage.headers.From,
+        CSeq: inviteSipMessage.headers.CSeq,
+        To: inviteSipMessage.headers.To + `;tag=${uuid()}`,
+        Supported: 'outbound',
+      },
+      body: '',
+    });
+    const _180Response = _180SipMessage.toString();
+    console.log(_180Response);
+    client.write(_180Response);
+  }
 
   client.destroy();
 })();

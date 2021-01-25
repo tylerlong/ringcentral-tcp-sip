@@ -63,7 +63,6 @@ const register = async (client: Socket, sipInfo: SIPInfoResponse) => {
     extension: process.env.RINGCENTRAL_EXTENSION,
     password: process.env.RINGCENTRAL_PASSWORD!,
   });
-
   const sipProvision = await rc
     .restapi()
     .clientInfo()
@@ -74,6 +73,7 @@ const register = async (client: Socket, sipInfo: SIPInfoResponse) => {
         computerName: hostname(),
       },
     });
+  await rc.revoke();
 
   const sipInfo = sipProvision.sipInfo![0];
   console.log(sipInfo);
@@ -97,8 +97,7 @@ const register = async (client: Socket, sipInfo: SIPInfoResponse) => {
     console.log('Closed');
   });
 
-  await waitFor({interval: 3000});
-  client.destroy();
+  await waitFor({interval: 3000000});
 
-  await rc.revoke();
+  client.destroy();
 })();

@@ -1,7 +1,7 @@
 {
   "license": "MIT",
   "engines": {
-    "node": ">=15.6.0"
+    "node": "==14"
   },
   "scripts": {
     "demo": "ts-node -r dotenv-override-true/config src/index.ts",
@@ -10,8 +10,12 @@
   "dependencies": {
     "@rc-ex/core": "^0.6.5",
     "blueimp-md5": "^2.18.0",
+    "core-js": "^3.8.3",
+    "isomorphic-webrtc": "^0.2.2",
+    "node-webrtc-media-devices": "^0.1.4",
     "uuid": "^8.3.2",
-    "wait-for-async": "^0.5.0"
+    "wait-for-async": "^0.5.0",
+    "wrtc": "^0.4.6"
   },
   "devDependencies": {
     "@types/blueimp-md5": "^2.7.0",

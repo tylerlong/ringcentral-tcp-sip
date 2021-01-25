@@ -3,9 +3,13 @@ import {hostname} from 'os';
 import {Socket} from 'net';
 import {v4 as uuid} from 'uuid';
 import {SIPInfoResponse} from '@rc-ex/core/lib/definitions';
+import irtc from 'isomorphic-webrtc';
 
 import {SipMessage} from './SIP';
 import {generateAuthorization, waitForMessage} from './utils';
+import waitFor from 'wait-for-async';
+
+const {RTCSessionDescription, RTCPeerConnection} = irtc;
 
 const fakeDomain = uuid() + '.invalid';
 const fakeEmail = uuid() + '@' + fakeDomain;
@@ -108,11 +112,11 @@ const register = async (client: Socket, sipInfo: SIPInfoResponse) => {
     );
     const inviteSipMessage = SipMessage.fromString(inviteMessage);
 
+    // 180 Ringing
     const _180SipMessage = new SipMessage({
       subject: 'SIP/2.0 180 Ringing',
       headers: {
-        Contact:
-          '<sip:0226d6bc-703c-48bc-93e8-16007e5067b9.invalid;transport=ws>',
+        Contact: `<sip:${fakeEmail};transport=tcp>`,
         'User-Agent': userAgent,
         'Content-Length': '0',
         Via: inviteSipMessage.headers.Via,
@@ -126,6 +130,42 @@ const register = async (client: Socket, sipInfo: SIPInfoResponse) => {
     const _180Response = _180SipMessage.toString();
     console.log(_180Response);
     client.write(_180Response);
+    await waitFor({interval: 1000}); // let it ring for 1 second
+
+    // Response to INVITE
+    const sdp = inviteSipMessage.body;
+    console.log(sdp);
+    const remoteRtcSd = new RTCSessionDescription({
+      type: 'offer',
+      sdp: sdp,
+    });
+    const peerConnection = new RTCPeerConnection({
+      iceServers: [{urls: 'stun:74.125.194.127:19302'}],
+    });
+    peerConnection.setRemoteDescription(remoteRtcSd);
+    const localRtcSd = await peerConnection.createAnswer();
+    peerConnection.setLocalDescription(localRtcSd);
+    peerConnection.addEventListener('track', (e: any) => {
+      console.log(e); // todo: handle incoming audio track
+    });
+    const responseSipMessage = new SipMessage({
+      subject: 'SIP/2.0 200 OK',
+      headers: {
+        Contact: `<sip:${fakeEmail};transport=tcp>`,
+        'Content-Type': 'application/sdp',
+        'Content-Length': localRtcSd.sdp.length,
+        'User-Agent': userAgent,
+        Via: inviteSipMessage.headers.Via,
+        From: inviteSipMessage.headers.From,
+        CSeq: inviteSipMessage.headers.CSeq,
+        To: inviteSipMessage.headers.To + `;tag=${uuid()}`,
+        Supported: 'outbound',
+      },
+      body: localRtcSd.sdp,
+    });
+    const responseMessage = responseSipMessage.toString();
+    console.log(responseMessage);
+    client.write(responseMessage);
   }
 
   client.destroy();

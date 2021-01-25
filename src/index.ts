@@ -4,7 +4,12 @@ import {Socket} from 'net';
 import waitFor from 'wait-for-async';
 import {v4 as uuid} from 'uuid';
 import {SIPInfoResponse} from '@rc-ex/core/lib/definitions';
+
 import {SipMessage} from './SIP';
+import {generateAuthorization, waitForMessage} from './utils';
+
+const fakeDomain = uuid() + '.invalid';
+const fakeEmail = uuid() + '@' + fakeDomain;
 
 const rc = new RingCentral({
   clientId: process.env.RINGCENTRAL_CLIENT_ID,
@@ -12,14 +17,14 @@ const rc = new RingCentral({
   server: process.env.RINGCENTRAL_SERVER_URL,
 });
 
-const register = (client: Socket, sipInfo: SIPInfoResponse) => {
+const register = async (client: Socket, sipInfo: SIPInfoResponse) => {
   const sipMessage = new SipMessage({
     subject: `REGISTER sip:${sipInfo.domain} SIP/2.0`,
     headers: {
       'Call-ID': uuid(),
       'User-Agent': 'ringcentral-tcp-sip-demo',
-      Contact: `<sip:${uuid()}@${uuid()}.invalid;transport=tcp>;expires=600`,
-      Via: `SIP/2.0/TCP ${uuid()}.invalid;branch=${'z9hG4bK' + uuid()}`,
+      Contact: `<sip:${fakeEmail};transport=tcp>;expires=600`,
+      Via: `SIP/2.0/TCP ${fakeDomain};branch=${'z9hG4bK' + uuid()}`,
       From: `<sip:${sipInfo.username}@${sipInfo.domain}>;tag=${uuid()}`,
       To: `<sip:${sipInfo.username}@${sipInfo.domain}>`,
       CSeq: '8082 REGISTER',
@@ -31,6 +36,25 @@ const register = (client: Socket, sipInfo: SIPInfoResponse) => {
   const body = sipMessage.toString();
   console.log(body);
   client.write(body);
+  const message = await waitForMessage(
+    client,
+    message => message.indexOf('", nonce="') !== -1
+  );
+  console.log('Got it');
+  const nonceMessage = SipMessage.fromString(message);
+  const wwwAuth =
+    nonceMessage.headers['WWW-Authenticate'] ||
+    nonceMessage.headers['Www-Authenticate'];
+  const nonce = wwwAuth.match(/, nonce="(.+?)"/)![1];
+  const auth = generateAuthorization(sipInfo, 'REGISTER', nonce);
+  sipMessage.headers.Authorization = auth;
+  sipMessage.headers.CSeq = '8083 REGISTER';
+  sipMessage.headers.Via = `SIP/2.0/TCP ${fakeDomain};branch=${
+    'z9hG4bK' + uuid()
+  }`;
+  const body2 = sipMessage.toString();
+  console.log(body2);
+  client.write(body2);
 };
 
 (async () => {
